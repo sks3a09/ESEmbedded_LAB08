@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "reg.h"
+#include "blink.h"
 
 void init_usart1(void)
 {
@@ -36,8 +37,15 @@ void init_usart1(void)
 	//AFRL
 	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(6), AFRLy_0_BIT(6),7);
 	WRITE_BITS(GPIO_BASE(GPIO_PORTB) + GPIOx_AFRL_OFFSET, AFRLy_3_BIT(7), AFRLy_0_BIT(7),7);
+
 	//RCC EN USART1
 	SET_BIT(RCC_BASE + RCC_APB2ENR_OFFSET, USART1EN);
+
+	//set RXNEIE bit in USART1_CR1
+	SET_BIT(USART1_BASE + USART_CR1_OFFSET, RXNE_BIT);
+
+	//set nvic configuration IQR37 => (m+(32*n)) | m=5, n=1)
+	SET_BIT(NVIC_ISER_BASE + NVIC_ISERn_OFFSET(1), 5);
 
 	//Baud
 	const unsigned int BAUD = 115200;
@@ -80,7 +88,7 @@ int main(void)
 	init_usart1();
 
 	char *hello = "Hello world!\r\n";
-
+	
 	//send Hello world
 	while (*hello != '\0')
 		usart1_send_char(*hello++);
@@ -88,6 +96,7 @@ int main(void)
 
 	//receive char and resend it
 	char ch;
+	blink(LED_ORANGE);
 	while (1)
 	{
 		ch = usart1_receive_char();
@@ -97,4 +106,26 @@ int main(void)
 
 		usart1_send_char(ch);
 	}
+	
+}
+void usart1_handler(void){
+	if(READ_BIT(USART1_BASE+USART_SR_OFFSET,ORE_BIT)){
+		for (unsigned int i = 0; i < 500000; i++)
+			;
+
+		char ch = (char)REG(USART1_BASE+USART_DR_OFFSET);
+
+		if (ch =='\r')
+			usart1_send_char('\n');
+		usart1_send_char(ch);
+		usart1_send_char('~');
+	}
+	else if(READ_BIT(USART1_BASE+USART_SR_OFFSET,RXNE_BIT)){
+		char ch = (char)REG(USART1_BASE+USART_DR_OFFSET);
+		if(ch =='\r')
+			usart1_send_char('\n');
+		usart1_send_char(ch);
+	}
+	//READ_BIT(USART1_BASE+USART_SR_OFFSET,RXNE_BIT);
+	
 }
